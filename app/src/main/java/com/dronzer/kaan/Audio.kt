@@ -33,6 +33,30 @@ data class Sample(
     val counts: Boolean get() = personal && playing && db > 0.0
 }
 
+/**
+ * Something Kaan wants to say right now, shown as a sheet over the app.
+ * The same news also goes out as a notification for when the app is closed.
+ */
+data class Notice(
+    val icon: Int,
+    val title: String,
+    val text: String,
+    val tone: Int = CALM,
+    /** Offer the lower to a safe volume button. */
+    val lower: Boolean = false,
+    /** Offer to undo the volume guard. */
+    val undo: Boolean = false,
+    /** A full colour illustration to show in place of the glyph. 0 for none. */
+    val art: Int = 0
+) {
+    companion object {
+        const val CALM = 0
+        const val WARN = 1
+        const val OVER = 2
+        const val JOY = 3
+    }
+}
+
 /** What the screens observe. The tracker and the Today screen both write here, on the main thread. */
 object Live {
     var sample by mutableStateOf<Sample?>(null)
@@ -40,6 +64,18 @@ object Live {
 
     /** True while precise mode is reading the signal. */
     var measuring by mutableStateOf(false)
+
+    /** True while the app is on screen. The tracker only raises a sheet when someone can see it. */
+    var visible = false
+
+    var notice by mutableStateOf<Notice?>(null)
+
+    /** 0 follows the phone, 1 is light, 2 is dark. */
+    var theme by mutableIntStateOf(0)
+
+    fun say(notice: Notice) {
+        if (visible) this.notice = notice
+    }
 }
 
 /**
@@ -187,8 +223,13 @@ object AudioProbe {
     /** Below this the output is treated as silent. */
     const val SILENCE_DBFS = -80.0
 
-    /** Lowers the media volume to the highest step that stays at or under the safe reference level. */
-    fun lowerToSafe(ctx: Context, store: Store): Boolean {
+    /**
+     * Lowers the media volume to the highest step that stays at or under the safe reference level.
+     * [nowDb] is the level Kaan shows right now. In precise mode it can sit above the safe level
+     * even when the volume step alone looks fine, so Kaan then steps down by the difference.
+     * Returns true when the volume changed.
+     */
+    fun lowerToSafe(ctx: Context, store: Store, nowDb: Double = 0.0): Boolean {
         val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val device = currentOutput(am, false) ?: return false
         if (device.type !in PERSONAL) return false
@@ -203,8 +244,16 @@ object AudioProbe {
                 break
             }
         }
-        if (am.getStreamVolume(stream) <= target) return false
-        return runCatching { am.setStreamVolume(stream, target, AudioManager.FLAG_SHOW_UI) }.isSuccess
+        val current = am.getStreamVolume(stream)
+        if (current <= target && nowDb > ref && current > 1) {
+            // About 3 dB a step is a fair guess across phones.
+            val down = kotlin.math.ceil((nowDb - ref) / 3.0).toInt().coerceAtLeast(1)
+            target = (current - down).coerceAtLeast(1)
+        }
+        if (current <= target) return false
+        val ok = runCatching { am.setStreamVolume(stream, target, AudioManager.FLAG_SHOW_UI) }.isSuccess
+        if (ok) store.lowers = store.lowers + 1
+        return ok
     }
 
     /** Bluetooth media and Bluetooth calls reach the same earphones through different outputs. One id covers both. */
