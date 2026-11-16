@@ -36,6 +36,12 @@ Kaan asks for no accessibility, SMS or notification-reading access, so the Play 
 
 To build on a computer instead, open the folder in Android Studio and press Run.
 
+## Debug signing key
+
+`app/debug.keystore` signs every debug build, on GitHub and on a computer. GitHub runners would otherwise create a new key on each run, and Android refuses to install one build over another when the keys differ.
+
+This key is for debug builds only. It is public in this repository and uses the standard Android debug passwords, so it proves nothing about who built an APK. It must never sign a release. Sign releases with a private key that stays out of the repository.
+
 ## Permissions
 
 | Permission | Why |

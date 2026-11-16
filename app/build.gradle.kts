@@ -13,11 +13,27 @@ android {
         applicationId = "com.dronzer.kaan"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+    }
+
+    // A fixed key for debug builds only, so one debug build can update another.
+    // It is public in this repository. It must never sign a release.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+            // The GitHub repository the debug update button reads releases from.
+            buildConfigField("String", "UPDATE_REPO", "\"0xAnon101/kaan\"")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -35,6 +51,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
