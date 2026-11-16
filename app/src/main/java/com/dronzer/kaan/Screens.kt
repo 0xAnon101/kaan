@@ -177,6 +177,27 @@ fun TodayScreen(openPro: () -> Unit) {
             }
         }
 
+        val update = Updater.state
+        AnimatedVisibility(
+            visible = update is UpdateState.Available,
+            enter = expandVertically(spatial()) + fadeIn(),
+            exit = shrinkVertically(spatial()) + fadeOut()
+        ) {
+            Column {
+                Spacer(Modifier.height(14.dp))
+                Card {
+                    Text("A new version is available", style = Type.heading, color = p.ink)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Build ${(update as? UpdateState.Available)?.build ?: ""} is ready on GitHub. You have build ${BuildConfig.VERSION_CODE}.",
+                        style = Type.small, color = p.muted
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    SolidButton("Download and install", onClick = { Updater.act(ctx) })
+                }
+            }
+        }
+
         AnimatedVisibility(
             visible = !tracking,
             enter = expandVertically(spatial()) + fadeIn(),
@@ -647,16 +668,53 @@ fun SettingsScreen(openPro: () -> Unit) {
                     changed()
                 }
             ) { Toggle(debugPro) }
+            UpdateRow()
         }
 
         Spacer(Modifier.height(24.dp))
-        Text("Kaan 1.0, made by Dronzer", style = Type.small, color = p.muted)
+        Text("Kaan ${BuildConfig.VERSION_NAME}, build ${BuildConfig.VERSION_CODE}, made by Dronzer", style = Type.small, color = p.muted)
         Spacer(Modifier.height(4.dp))
         Text(
             "Kaan estimates sound from your volume setting. It is a guide, not a medical device. See an audiologist if you notice ringing or muffled hearing.",
             style = Type.small, color = p.muted
         )
         Spacer(Modifier.height(28.dp))
+    }
+}
+
+/** Debug builds only. Finds, downloads and installs the newest build from GitHub Releases. */
+@Composable
+private fun UpdateRow() {
+    val ctx = LocalContext.current
+    val p = LocalPalette.current
+    val state = Updater.state
+    val mine = BuildConfig.VERSION_CODE
+    val title = when (state) {
+        is UpdateState.Available -> "Update to build ${state.build}"
+        is UpdateState.Downloading -> "Update to build ${state.build}"
+        is UpdateState.NeedsPermission -> "Update to build ${state.build}"
+        is UpdateState.Ready -> "Update to build ${state.build}"
+        else -> "Check for update"
+    }
+    val detail = when (state) {
+        is UpdateState.Idle -> "You have build $mine. Tap to look for a newer one."
+        is UpdateState.Checking -> "Checking GitHub for a newer build."
+        is UpdateState.UpToDate -> "You have the newest build, $mine."
+        is UpdateState.Available -> "A new version is available. Tap to download and install it."
+        is UpdateState.Downloading -> "Downloading, ${(state.progress * 100).roundToInt()} percent done."
+        is UpdateState.NeedsPermission -> "Allow Kaan to install apps on the page that opened, then tap here again."
+        is UpdateState.Ready -> "The installer has the new build. Tap to open it again."
+        is UpdateState.Failed -> "${state.reason} Tap to try again."
+    }
+    SettingRow(title, detail, onClick = { Updater.act(ctx) }) {
+        when (state) {
+            is UpdateState.Downloading ->
+                Meter(fraction = state.progress, color = p.accent, modifier = Modifier.width(56.dp).height(8.dp))
+            is UpdateState.Checking -> Meter(fraction = 0f, color = p.accent, modifier = Modifier.width(56.dp).height(8.dp))
+            is UpdateState.UpToDate -> Glyph(R.drawable.ic_check, p.accent)
+            is UpdateState.Failed -> Glyph(R.drawable.ic_retry, p.over, label = "Try again")
+            else -> Glyph(R.drawable.ic_update, p.accent)
+        }
     }
 }
 

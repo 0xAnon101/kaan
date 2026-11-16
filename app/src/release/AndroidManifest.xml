@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+        Kaan sends nothing off the phone. The Play Billing library pulls in a logging
+        component that asks for this permission. Purchases go through the Play Store app
+        and do not need it, so the release build drops it.
+    -->
+    <uses-permission
+        android:name="android.permission.INTERNET"
+        tools:node="remove" />
+
+</manifest>

@@ -71,6 +71,8 @@ class MainActivity : ComponentActivity() {
         billing.start()
         val store = Store(this)
         if (store.onboarded && store.tracking) TrackerService.start(this)
+        // Debug builds look for a newer build on GitHub. Release builds do nothing here.
+        Updater.autoCheck(this)
         Live.beat++
     }
 

@@ -25,12 +25,26 @@ Kaan reads the media volume and the connected earphones, estimates the sound lev
 
 Open Settings in the app and switch on "Unlock Pro for testing". The row exists only in debug builds. It stays on until you switch it off, and a release build never shows it.
 
-## Build the APK online
+## Get the APK
 
-1. Create an empty GitHub repository and push the contents of this folder to the `main` branch. Use `git push`, because the web uploader can skip the hidden `.github` folder.
-2. Open the Actions tab and wait for the "Build APK" run to turn green.
-3. Open the run, scroll to Artifacts and download `kaan-debug-apk`.
-4. Unzip it on the phone and tap `app-debug.apk`.
+Every push to `main` builds the app on GitHub. A green build publishes a GitHub Release tagged `build-<versionCode>` with `kaan-debug.apk` attached, and marks it as the latest release.
+
+1. Open the Releases page of the repository on the phone.
+2. Download `kaan-debug.apk` from the latest release and tap it.
+
+The same APK is also attached to the workflow run as the `kaan-debug-apk` artifact.
+
+## Update from inside the app
+
+Debug builds can update themselves. Kaan looks for a newer release when it opens, and shows "A new version is available" on the Today screen when it finds one. Settings also has a "Check for update" row.
+
+1. Tap "Download and install" or the update row.
+2. The first time, Android asks to let Kaan install apps. Allow it, go back and tap the row again.
+3. Confirm the install in the system dialog.
+
+The update code lives in `app/src/debug`. The release build has a stand-in that does nothing, no INTERNET permission and no install permission. The workflow builds the release variant on every push and fails if either permission appears.
+
+The repository name the app checks is set once, as `UPDATE_REPO` in `app/build.gradle.kts`.
 
 Kaan asks for no accessibility, SMS or notification-reading access, so the Play Protect block that stopped Viraam should not apply. Android may still show its standard "unknown app" scan prompt.
 
@@ -97,6 +111,9 @@ app/src/main/java/com/dronzer/kaan/
   KaanWidget.kt       Home screen widget
   Billing.kt          Google Play subscriptions
   Theme.kt            Colours, type, motion
+  Update.kt           States of the debug update row
+app/src/debug/        Updater that reads GitHub Releases, its manifest and file provider
+app/src/release/      Updater stand-in, and the manifest that drops INTERNET
 app/src/main/res/
   drawable/           Custom mark and icon set (vector)
   font/               Funnel Display, Funnel Sans
@@ -109,6 +126,5 @@ Funnel Display and Funnel Sans ship under the SIL Open Font License. The licence
 ## Known limits
 
 - Precise mode was written without a test device. Check on the Pixel that Settings shows "Kaan is reading the signal" while music plays, and that the dB figure on Today moves with loud and quiet passages.
-- This project was syntax-checked but not compiled before delivery. The first build may show a small error. The Actions log names the file and line.
 - Kaan asks once about each new Bluetooth device. A wrong answer can be changed on the Earphones screen.
 - Some phone brands stop background services. Users on those phones must exempt Kaan from battery optimisation. Pixel phones do not need this.

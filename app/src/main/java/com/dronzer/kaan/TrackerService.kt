@@ -148,6 +148,8 @@ class TrackerService : Service() {
         checkAlerts(sample)
         checkRest()
         askAbout(sample)
+        // Debug builds only. Tells the user when a newer build is on GitHub.
+        Updater.autoCheck(this, notify = true)
 
         val text = statusText(sample)
         if (text != lastStatus) {
