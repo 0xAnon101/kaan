@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kaan</string>
+    <string name="widget_name">Hearing budget</string>
+    <string name="widget_description">Shows how much of today\'s safe listening you have used</string>
+</resources>
