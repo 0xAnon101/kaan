@@ -3,6 +3,7 @@ package com.dronzer.kaan
 import android.content.Context
 import android.provider.Settings
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -40,7 +42,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
@@ -49,6 +53,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 
 val Corner = RoundedCornerShape(14.dp)
 val CardShape = RoundedCornerShape(22.dp)
@@ -295,5 +300,64 @@ fun Fact(value: String, caption: String, modifier: Modifier = Modifier, color: C
         Text(value, style = Type.stat, color = color)
         Spacer(Modifier.height(2.dp))
         Text(caption, style = Type.small, color = LocalPalette.current.muted)
+    }
+}
+
+/**
+ * Lets a block rise into place when its screen opens. Blocks with a higher [order] follow
+ * a moment later. The motion runs in the draw phase, so it costs no recomposition.
+ */
+@Composable
+fun Modifier.arrive(order: Int): Modifier {
+    val ctx = LocalContext.current
+    val still = remember { reducedMotion(ctx) }
+    if (still) return this
+    val shown = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        delay(order * 55L)
+        shown.animateTo(1f, spring(dampingRatio = 0.78f, stiffness = 260f))
+    }
+    return this.graphicsLayer {
+        val v = shown.value
+        alpha = v.coerceIn(0f, 1f)
+        translationY = (1f - v) * 28.dp.toPx()
+    }
+}
+
+/**
+ * A glyph standing on its own in a square of space. No tinted box behind it.
+ * [bg] is kept so callers read the same, and is not drawn.
+ */
+@Composable
+fun IconBlock(icon: Int, bg: Color, tint: Color, modifier: Modifier = Modifier, size: Dp = 48.dp, glyph: Dp = 24.dp) {
+    Box(modifier.size(size), contentAlignment = Alignment.Center) {
+        Glyph(icon, tint, size = if (glyph > size * 0.7f) glyph else size * 0.7f)
+    }
+}
+
+/** A full colour badge. It turns grey and faint until the badge is earned. */
+@Composable
+fun BadgeArt(art: Int, earned: Boolean, modifier: Modifier = Modifier, size: Dp = 64.dp) {
+    val grey = remember { ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) }
+    Image(
+        painter = painterResource(art),
+        contentDescription = null,
+        modifier = modifier.size(size).graphicsLayer { alpha = if (earned) 1f else 0.38f },
+        colorFilter = if (earned) null else grey
+    )
+}
+
+/** 1 day 6 h, 5 h, 40 min. For the time left in the trial. */
+fun longDuration(ms: Long): String {
+    val minutes = ms / 60000L
+    val d = minutes / 1440L
+    val h = (minutes % 1440L) / 60L
+    val m = minutes % 60L
+    return when {
+        d > 0 && h > 0 -> "$d ${if (d == 1L) "day" else "days"} $h h"
+        d > 0 -> "$d ${if (d == 1L) "day" else "days"}"
+        h > 0 -> "$h h"
+        m > 0 -> "$m min"
+        else -> "under a minute"
     }
 }

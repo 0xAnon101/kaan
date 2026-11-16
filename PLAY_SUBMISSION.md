@@ -35,6 +35,9 @@ What you get
 - Today's budget as one clear percentage
 - The safe time left at your current volume
 - A warning at 80 percent and at 100 percent, with one tap to lower the volume
+- A guard that pulls a sudden jump to full volume back to 60 percent
+- Daily quests, streaks, levels and badges for listening with care
+- Light and dark themes
 - Calls on earphones counted along with music
 - Bluetooth speakers and car stereos left out of the count
 
@@ -126,14 +129,15 @@ Use the same video link.
 
 ## Monetize: subscriptions
 
-Create two subscriptions, each with one base plan.
+Create one subscription with one base plan.
 
-| Product ID | Name | Billing period |
-|---|---|---|
-| `kaan_pro_monthly` | Kaan Pro monthly | 1 month |
-| `kaan_pro_yearly` | Kaan Pro yearly | 1 year |
+| Product ID | Name | Billing period | Price |
+|---|---|---|---|
+| `kaan_pro_monthly` | Kaan Pro monthly | 1 month | 20 rupees |
 
-**Benefits text for both**
+Do not add a free trial offer in Play Console. The app already opens every Pro feature for the first 2 days, with no card. Say so in the listing: "Free for 2 days, then 20 rupees a month."
+
+**Benefits text**
 
 - 7 and 30 day history
 - Earphone calibration

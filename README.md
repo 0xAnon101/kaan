@@ -8,9 +8,11 @@ Kaan reads the media volume and the connected earphones, estimates the sound lev
 
 | Area | Behaviour |
 |---|---|
-| Today | Large percentage, an animated vessel that fills with the budget, the current level in dB, and the safe time left at the current volume |
-| Through the day | 24 bars, one per hour |
-| Alerts | One notification at 80 percent and one at 100 percent, each with a "Lower to a safe volume" action |
+| Today | A sky scene that follows the clock, a ring that fills with the budget, the current level in dB, and the safe time left at the current volume |
+| Warnings | A pop-up with sound and vibration at 80 percent, at 100 percent and again far past it, each with a "Lower to a safe volume" action. The same news shows as a sheet inside the app |
+| Sudden volume guard | If the volume jumps to full in one quick move on earphones, Kaan sets it back to 60 percent. One tap undoes it. Free for everyone |
+| Quests | Three small goals a day: stay inside the budget, keep the average low, keep the loudest moment low |
+| Rewards | A streak of days inside the budget, points, six levels and eight badges, with confetti when one is earned |
 | History (Pro) | 7 and 30 day charts against the daily budget, days over budget, average level, listening time |
 | Earphones | Kaan guesses whether a new Bluetooth device is a speaker, then asks once to confirm. Free for everyone |
 | Calibration (Pro) | Set each pair to quiet, standard or loud, then fine tune in 1 dB steps against the maker's stated maximum |
@@ -19,7 +21,14 @@ Kaan reads the media volume and the connected earphones, estimates the sound lev
 | Ear rest (Pro) | A reminder after 30, 45, 60 or 90 minutes of unbroken listening |
 | Auto volume drop (Pro) | Lowers the volume once when the budget runs out |
 | Widget (Pro) | Today's budget on the home screen |
+| Appearance | Light and dark themes. Follows the phone, or set it in Settings |
 | Standards | Adult mode (80 dB for 40 hours a week) and child or sensitive mode (75 dB for 40 hours a week), from the WHO and ITU safe listening standard H.870 |
+
+## Free trial and price
+
+Every Pro feature is open for the first 2 days after the app is first opened. The trial runs inside the app and needs no card. After that, Pro is one monthly subscription, `kaan_pro_monthly`, priced at 20 rupees a month in Play Console. Tracking, warnings, the volume guard, quests and rewards stay free.
+
+The trial clock lives on the phone, so clearing the app's data starts it again. That is accepted for an app with no account and no server.
 
 ## See the Pro features in a debug build
 
@@ -60,7 +69,7 @@ This key is for debug builds only. It is public in this repository and uses the 
 
 | Permission | Why |
 |---|---|
-| Notifications | The silent budget line and the two warnings |
+| Notifications | The silent budget line and the warnings. Warnings use a high importance channel so they pop up with sound and vibration |
 | Foreground service (special use) | Keeps the volume sampler alive while audio plays |
 | Run at startup | Resumes tracking after a restart |
 | Record audio, change audio settings, foreground service (microphone) | Precise mode only. Android requires them to read the level of the phone's own audio output. Kaan never opens the microphone |
@@ -95,22 +104,24 @@ Precise mode knows the signal the phone sends. It still does not know how effici
 - dbTrack: a similar tracker that is no longer on Google Play.
 - iPhone has headphone exposure tracking built into the Health app.
 
-The category is thin on Android. Kaan competes on design, clarity and the "time left at this volume" line.
+The category is thin on Android. Kaan competes on design, clarity, the "time left at this volume" line and its rewards.
 
 ## Project layout
 
 ```
 app/src/main/java/com/dronzer/kaan/
-  MainActivity.kt     Navigation, tab bar, first run
+  MainActivity.kt     Navigation, tab bar, notice sheet, first run
   Screens.kt          Today, History, Earphones, Settings, Pro
-  Charts.kt           Vessel, bar chart, level meter
+  Charts.kt           Sky scene, ring, bars, confetti
   Ui.kt               Buttons, switch, segmented control, rows
-  TrackerService.kt   Background sampler, alerts, rest reminder
+  TrackerService.kt   Background sampler, warnings, volume guard, rest reminder
   Audio.kt            Dose maths and volume to dB estimate
   Store.kt            Settings and daily records
   KaanWidget.kt       Home screen widget
   Billing.kt          Google Play subscriptions
   Theme.kt            Colours, type, motion
+  Game.kt             Streak, points, levels, quests and badges
+  Rewards.kt          The Rewards screen
   Update.kt           States of the debug update row
 app/src/debug/        Updater that reads GitHub Releases, its manifest and file provider
 app/src/release/      Updater stand-in, and the manifest that drops INTERNET
@@ -124,6 +135,9 @@ app/src/main/res/
 Funnel Display and Funnel Sans ship under the SIL Open Font License. The licence texts sit in `licenses/`.
 
 ## Known limits
+
+- The volume guard listens for Android's volume change broadcast, which is not part of the public SDK. It has been stable for years, and Kaan also watches the system settings table as a fallback. Check on the phone that a fast swipe to full volume on earphones drops back to 60 percent.
+- The release build drops the INTERNET permission that the Play Billing library pulls in for its own logging. Purchases go through the Play Store app. Test a purchase on a Play internal track before the first public release.
 
 - Precise mode was written without a test device. Check on the Pixel that Settings shows "Kaan is reading the signal" while music plays, and that the dB figure on Today moves with loud and quiet passages.
 - Kaan asks once about each new Bluetooth device. A wrong answer can be changed on the Earphones screen.

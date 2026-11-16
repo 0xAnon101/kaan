@@ -2,6 +2,7 @@ package com.dronzer.kaan
 
 import android.Manifest
 import android.app.Activity
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -11,17 +12,29 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -35,8 +48,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.background
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -51,8 +68,26 @@ private fun isDebuggable(ctx: Context): Boolean =
 
 // ---------------------------------------------------------------- Today
 
+/** Seconds until the daily budget starts again. */
+private fun untilMidnight(): Long = (86400 - LocalTime.now().toSecondOfDay()).toLong()
+
+/** The face on the vessel: a wide smile on a quiet day, a frown once the budget is gone. */
+private fun mood(dose: Double): Float = when {
+    dose >= 1.0 -> -0.9f
+    dose >= 0.8 -> -0.15f
+    dose >= 0.5 -> 0.55f
+    else -> 1f
+}
+
+private fun greeting(hour: Int): String = when (hour) {
+    in 5..11 -> "Good morning"
+    in 12..16 -> "Good afternoon"
+    in 17..21 -> "Good evening"
+    else -> "Good night"
+}
+
 @Composable
-fun TodayScreen(openPro: () -> Unit) {
+fun TodayScreen(openPro: () -> Unit, openRewards: () -> Unit) {
     val ctx = LocalContext.current
     val p = LocalPalette.current
     val store = remember { Store(ctx) }
@@ -76,43 +111,80 @@ fun TodayScreen(openPro: () -> Unit) {
     val hours = remember(beat) { store.hours() }
     val tracking = remember(beat) { store.tracking }
     val sensitive = remember(beat) { store.sensitive }
+    val streak = remember(beat) { Game.streak(store) }
+    val quests = remember(beat) { Game.quests(store) }
+    val alertsOn = remember(beat) {
+        (ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).areNotificationsEnabled()
+    }
+    val hour = remember(beat) { LocalTime.now().hour }
 
     val fraction = dose.toFloat()
     val state = p.state(fraction)
     val listening = sample != null && sample.counts
     val ref = Dose.refDb(sensitive)
+    var lowered by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(lowered) {
+        if (lowered != null) {
+            delay(4000)
+            lowered = null
+        }
+    }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Glyph(R.drawable.ic_mark, p.accent, size = 24.dp)
-            Spacer(Modifier.width(10.dp))
-            Text("Kaan", style = Type.heading, color = p.ink)
+        Spacer(Modifier.height(14.dp))
+        val deep = sceneIsDeep(hour, p.dark)
+        val onScene = if (deep) Color(0xFFF2F4FA) else Color(0xFF1D2440)
+        Scene(hour = hour, mood = mood(dose), modifier = Modifier.fillMaxWidth().height(188.dp).arrive(0)) {
+            Column(Modifier.padding(20.dp)) {
+                Text(greeting(hour), style = Type.title, color = onScene)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    when {
+                        dose >= 1.0 -> "Budget used up"
+                        dose >= 0.8 -> "Go easy now"
+                        dose >= 0.5 -> "Going well"
+                        else -> "Your ears are happy"
+                    },
+                    style = Type.body, color = onScene.copy(alpha = 0.78f)
+                )
+            }
+            Box(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
+                StreakMark(streak = streak, onClick = openRewards)
+            }
         }
-
-        Spacer(Modifier.height(18.dp))
-        Row(verticalAlignment = Alignment.Bottom) {
-            CountUp(percent(dose), style = Type.hero, color = state)
-            Text("%", style = Type.title, color = state, modifier = Modifier.padding(start = 4.dp, bottom = 18.dp))
-        }
-        Text(
-            when {
-                dose >= 1.0 -> "Today's safe listening is used up"
-                dose >= 0.8 -> "of today's safe listening used. Go easy from here"
-                else -> "of today's safe listening used"
-            },
-            style = Type.body, color = p.muted
-        )
-
-        Spacer(Modifier.height(20.dp))
-        Vessel(
-            fill = fraction,
-            energy = if (listening) ((sample!!.db - 55.0) / 45.0).toFloat() else 0f,
-            color = state,
-            modifier = Modifier.fillMaxWidth().height(170.dp)
-        )
 
         Spacer(Modifier.height(14.dp))
-        Card {
+        Card(Modifier.arrive(1)) {
+            Ring(
+                fraction = fraction,
+                color = state,
+                modifier = Modifier.align(Alignment.CenterHorizontally).size(208.dp)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        CountUp(percent(dose), style = Type.big, color = state)
+                        Text("%", style = Type.heading, color = state, modifier = Modifier.padding(start = 2.dp, bottom = 9.dp))
+                    }
+                    Text("of today's budget", style = Type.small, color = p.muted)
+                }
+            }
+            Text(
+                when {
+                    dose >= 1.0 -> "${percent(dose) - 100}% over. Resets in ${duration(untilMidnight())}"
+                    listening -> {
+                        val left = Dose.remainingSeconds(dose, sample!!.db, sensitive)
+                        "${duration(left).replaceFirstChar { it.uppercase() }} left at this volume"
+                    }
+                    else -> "${100 - percent(dose)}% left for today"
+                },
+                style = Type.bodyStrong,
+                color = if (dose >= 1.0) p.over else p.ink,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
+
+            Spacer(Modifier.height(18.dp))
+            Rule()
+            Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Glyph(
                     if (sample != null && sample.deviceId != null && sample.personal) R.drawable.ic_devices else R.drawable.ic_speaker,
@@ -127,13 +199,11 @@ fun TodayScreen(openPro: () -> Unit) {
                     Text(
                         when {
                             sample == null -> "One moment"
-                            sample.deviceId == null -> "Speakers do not count toward your budget"
-                            !sample.personal -> "Marked as a speaker. Not counted"
-                            !sample.playing -> "Connected. Nothing is playing"
+                            sample.deviceId == null -> "Not counted"
+                            !sample.personal -> "Speaker, not counted"
+                            !sample.playing -> "Nothing is playing"
                             sample.db <= 0.0 -> "Muted"
-                            sample.measured -> "Measured signal, about ${sample.db.roundToInt()} dB at your ear"
-                            sample.call -> "On a call, about ${sample.db.roundToInt()} dB at your ear"
-                            sample.speech -> "Speech, about ${sample.db.roundToInt()} dB at your ear"
+                            sample.call -> "Call, about ${sample.db.roundToInt()} dB at your ear"
                             else -> "About ${sample.db.roundToInt()} dB at your ear"
                         },
                         style = Type.small, color = p.muted
@@ -142,26 +212,53 @@ fun TodayScreen(openPro: () -> Unit) {
             }
             if (listening) {
                 val db = sample!!.db
-                val left = Dose.remainingSeconds(dose, db, sensitive)
-                Spacer(Modifier.height(16.dp))
-                Meter(
+                val loud = db > ref && !sample.call
+                Spacer(Modifier.height(14.dp))
+                LevelBar(
                     fraction = ((db - 40.0) / 70.0).toFloat(),
-                    color = if (db > ref + 9) p.over else if (db > ref) p.caution else p.accent,
-                    modifier = Modifier.fillMaxWidth().height(10.dp)
+                    color = if (db > ref + 9) p.over else if (db > ref) p.caution else p.calm,
+                    icon = R.drawable.ic_volume,
+                    modifier = Modifier.fillMaxWidth().height(46.dp)
                 )
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    when {
-                        left <= 0L -> "No budget left at this volume today"
-                        else -> "${duration(left).replaceFirstChar { it.uppercase() }} left at this volume"
-                    },
-                    style = Type.bodyStrong, color = p.ink
-                )
-                if (db > ref && !sample.call) {
-                    TextLink("Lower to a safe volume", onClick = {
-                        AudioProbe.lowerToSafe(ctx, store)
+                if (loud) {
+                    Spacer(Modifier.height(12.dp))
+                    val lower: () -> Unit = {
+                        val changed = AudioProbe.lowerToSafe(ctx, store, db)
+                        lowered = if (changed) "Volume is at a safe step now" else "Already at a safe step"
+                        Live.sample = AudioProbe.read(ctx, store)
+                        Game.collect(store)
+                        Game.cheer(store)
                         Live.beat++
-                    })
+                    }
+                    if (dose >= 0.8) SolidButton("Lower to a safe volume", onClick = lower)
+                    else OutlineButton("Lower to a safe volume", onClick = lower)
+                }
+            }
+            AnimatedVisibility(
+                visible = lowered != null,
+                enter = expandVertically(spatial()) + fadeIn(),
+                exit = shrinkVertically(spatial()) + fadeOut()
+            ) {
+                Column {
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Glyph(R.drawable.ic_check, p.accent, size = 20.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(lowered ?: "", style = Type.small, color = p.ink)
+                    }
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = !alertsOn,
+            enter = expandVertically(spatial()) + fadeIn(),
+            exit = shrinkVertically(spatial()) + fadeOut()
+        ) {
+            Column {
+                Spacer(Modifier.height(14.dp))
+                ActionCard(R.drawable.ic_bell, p.blush, p.over, "Warnings are off", "Allow notifications") {
+                    openNotificationSettings(ctx)
                 }
             }
         }
@@ -185,15 +282,8 @@ fun TodayScreen(openPro: () -> Unit) {
         ) {
             Column {
                 Spacer(Modifier.height(14.dp))
-                Card {
-                    Text("A new version is available", style = Type.heading, color = p.ink)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Build ${(update as? UpdateState.Available)?.build ?: ""} is ready on GitHub. You have build ${BuildConfig.VERSION_CODE}.",
-                        style = Type.small, color = p.muted
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    SolidButton("Download and install", onClick = { Updater.act(ctx) })
+                ActionCard(R.drawable.ic_update, p.lift, p.accent, "A new version is available", "Download and install") {
+                    Updater.act(ctx)
                 }
             }
         }
@@ -205,52 +295,154 @@ fun TodayScreen(openPro: () -> Unit) {
         ) {
             Column {
                 Spacer(Modifier.height(14.dp))
-                Card {
-                    Text("Tracking is off", style = Type.heading, color = p.ink)
-                    Spacer(Modifier.height(4.dp))
-                    Text("Kaan only counts listening while tracking runs in the background.", style = Type.small, color = p.muted)
-                    Spacer(Modifier.height(14.dp))
-                    SolidButton("Turn tracking on", onClick = {
-                        TrackerService.start(ctx)
-                        Live.beat++
-                    })
+                ActionCard(R.drawable.ic_today, p.lift, p.accent, "Tracking is off", "Turn tracking on") {
+                    TrackerService.start(ctx)
+                    Live.beat++
                 }
             }
         }
 
-        Spacer(Modifier.height(26.dp))
-        Row(Modifier.fillMaxWidth()) {
-            Fact(if (seconds < 60) "0 min" else duration(seconds), "listened", Modifier.weight(1.3f))
-            Fact(if (avg > 0) "$avg dB" else "none", "average", Modifier.weight(1f))
-            Fact(
-                if (peak > 0) "$peak dB" else "none", "loudest", Modifier.weight(1f),
-                color = if (peak > ref + 9) p.over else p.ink
-            )
+        Spacer(Modifier.height(14.dp))
+        Card(Modifier.arrive(2)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Quests", style = Type.heading, color = p.ink, modifier = Modifier.weight(1f))
+                Text("${quests.count { it.done }} of ${quests.size}", style = Type.bodyStrong, color = p.accent)
+            }
+            Spacer(Modifier.height(6.dp))
+            quests.forEach { quest -> QuestRow(quest) }
         }
 
-        Spacer(Modifier.height(28.dp))
-        Text("Through the day", style = Type.heading, color = p.ink)
-        Spacer(Modifier.height(12.dp))
-        val top = (hours.maxOrNull() ?: 0L).coerceAtLeast(1L)
-        val nowHour = LocalTime.now().hour
-        Bars(
-            values = hours.map { it.toFloat() / top },
-            colors = List(24) { if (it == nowHour) p.ink else p.accent },
-            modifier = Modifier.fillMaxWidth().height(84.dp)
-        )
-        Spacer(Modifier.height(6.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            listOf("12 am", "6 am", "12 pm", "6 pm", "11 pm").forEach {
-                Text(it, style = Type.label, color = p.muted)
+        Spacer(Modifier.height(14.dp))
+        Card(Modifier.arrive(3)) {
+            Row(Modifier.fillMaxWidth()) {
+                Fact(if (seconds < 60) "0 min" else duration(seconds), "listened", Modifier.weight(1.3f))
+                Fact(if (avg > 0) "$avg dB" else "none", "average", Modifier.weight(1f))
+                Fact(
+                    if (peak > 0) "$peak dB" else "none", "loudest", Modifier.weight(1f),
+                    color = if (peak > ref + 9) p.over else p.ink
+                )
+            }
+            Spacer(Modifier.height(20.dp))
+            val top = (hours.maxOrNull() ?: 0L).coerceAtLeast(1L)
+            Bars(
+                values = hours.map { it.toFloat() / top },
+                colors = List(24) { if (it == hour) p.accent else p.calm },
+                modifier = Modifier.fillMaxWidth().height(72.dp)
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                listOf("12 am", "6 am", "12 pm", "6 pm", "11 pm").forEach {
+                    Text(it, style = Type.label, color = p.muted)
+                }
             }
         }
 
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(18.dp))
         Text(
             "Kaan estimates sound at your ear. It is a guide, not a medical measurement.",
             style = Type.small, color = p.muted
         )
         Spacer(Modifier.height(28.dp))
+    }
+}
+
+/** A block with one line of news and one button. */
+@Composable
+private fun ActionCard(icon: Int, bg: Color, tint: Color, title: String, action: String, onClick: () -> Unit) {
+    val p = LocalPalette.current
+    Card {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBlock(icon, bg, tint, size = 44.dp)
+            Spacer(Modifier.width(14.dp))
+            Text(title, style = Type.heading, color = p.ink, modifier = Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(14.dp))
+        SolidButton(action, onClick = onClick)
+    }
+}
+
+private fun openNotificationSettings(ctx: Context) {
+    runCatching {
+        ctx.startActivity(
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+}
+
+/** The streak in the corner of Today. The flame sways while a streak is alive. */
+@Composable
+private fun StreakMark(streak: Int, onClick: () -> Unit) {
+    val ctx = LocalContext.current
+    val p = LocalPalette.current
+    val still = remember { reducedMotion(ctx) }
+    val loop = rememberInfiniteTransition(label = "flame")
+    val sway = loop.animateFloat(
+        initialValue = -1f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1100, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "sway"
+    )
+    Pressable(
+        onClick = onClick,
+        modifier = Modifier.heightIn(min = 44.dp),
+        label = "Rewards",
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            Modifier.clip(Corner).background(p.surface).padding(start = 8.dp, top = 4.dp, bottom = 4.dp, end = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconBlock(
+                R.drawable.ic_flame,
+                if (streak > 0) p.joy else p.bg,
+                if (streak > 0) p.accent else p.muted,
+                modifier = Modifier.graphicsLayer {
+                    if (streak > 0 && !still) {
+                        rotationZ = sway.value * 5f
+                        val s = 1f + sway.value * 0.04f
+                        scaleX = s
+                        scaleY = s
+                    }
+                },
+                size = 34.dp,
+                glyph = 20.dp
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                if (streak == 1) "1 day" else "$streak days",
+                style = Type.bodyStrong, color = p.ink
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuestRow(quest: Quest) {
+    val p = LocalPalette.current
+    val bg by animateColorAsState(if (quest.done) p.lift else p.bg, tween(300), label = "questBg")
+    val tint by animateColorAsState(if (quest.done) p.accent else p.muted, tween(300), label = "questTint")
+    val pop by animateFloatAsState(
+        if (quest.done) 1f else 0f, spring(dampingRatio = 0.45f, stiffness = 380f), label = "questPop"
+    )
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconBlock(quest.icon, bg, tint, size = 42.dp, glyph = 22.dp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(quest.title, style = Type.bodyStrong, color = p.ink)
+            Text(quest.detail, style = Type.small, color = p.muted)
+        }
+        Spacer(Modifier.width(8.dp))
+        Glyph(
+            R.drawable.ic_check, p.accent,
+            modifier = Modifier.graphicsLayer {
+                alpha = pop.coerceIn(0f, 1f)
+                scaleX = pop
+                scaleY = pop
+            },
+            label = if (quest.done) "On track" else null
+        )
     }
 }
 
@@ -283,7 +475,7 @@ fun HistoryScreen(openPro: () -> Unit) {
                 Text("See your week and month", style = Type.heading, color = p.ink)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Kaan Pro charts every day against your budget, counts the days you went over and shows your weekly total.",
+                    "Every day charted against your budget.",
                     style = Type.body, color = p.muted
                 )
                 Spacer(Modifier.height(16.dp))
@@ -379,20 +571,23 @@ fun KindQuestion(id: String, name: String, store: Store) {
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            if (guessedSpeaker) "Kaan guessed speaker from the name and is not counting it."
-            else "Earphones count toward your budget. Speakers and car stereos do not.",
+            if (guessedSpeaker) "Kaan guessed speaker and is not counting it."
+            else "Only earphones count toward your budget.",
             style = Type.small, color = p.muted
         )
         Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlineButton("Earphones", modifier = Modifier.weight(1f), onClick = {
-                store.classify(id, false)
+            // The card must go the moment the user answers, not at the next reading.
+            fun answer(speaker: Boolean) {
+                store.classify(id, speaker)
+                val now = Live.sample
+                if (now != null && now.deviceId == id) Live.sample = now.copy(ask = false, personal = !speaker)
+                Game.collect(store)
+                Game.cheer(store)
                 Live.beat++
-            })
-            OutlineButton("Speaker", modifier = Modifier.weight(1f), onClick = {
-                store.classify(id, true)
-                Live.beat++
-            })
+            }
+            OutlineButton("Earphones", modifier = Modifier.weight(1f), onClick = { answer(false) })
+            OutlineButton("Speaker", modifier = Modifier.weight(1f), onClick = { answer(true) })
         }
     }
 }
@@ -410,11 +605,6 @@ fun EarphonesScreen(openPro: () -> Unit) {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         ScreenTitle("Earphones")
-        Text(
-            "Kaan remembers each pair you connect. Tell it which ones are speakers, and the count stays honest.",
-            style = Type.body, color = p.muted
-        )
-        Spacer(Modifier.height(18.dp))
 
         if (ids.isEmpty()) {
             Card {
@@ -422,7 +612,7 @@ fun EarphonesScreen(openPro: () -> Unit) {
                 Spacer(Modifier.height(12.dp))
                 Text("No earphones yet", style = Type.heading, color = p.ink)
                 Spacer(Modifier.height(4.dp))
-                Text("Connect a pair and play something. It appears here.", style = Type.body, color = p.muted)
+                Text("Connect a pair and play something.", style = Type.body, color = p.muted)
             }
         }
 
@@ -469,6 +659,8 @@ fun EarphonesScreen(openPro: () -> Unit) {
                             Spacer(Modifier.height(6.dp))
                             Segmented(listOf("Earphones", "Speaker"), if (speaker) 1 else 0, onSelect = {
                                 store.classify(id, it == 1)
+                                Game.collect(store)
+                                Game.cheer(store)
                                 Live.beat++
                             })
                             Spacer(Modifier.height(14.dp))
@@ -485,7 +677,7 @@ fun EarphonesScreen(openPro: () -> Unit) {
                                 Column(Modifier.weight(1f)) {
                                     Text("Fine tune", style = Type.bodyStrong, color = p.ink)
                                     Text(
-                                        "If the maker lists a maximum level in dB, step until the figure above matches it.",
+                                        "Match the maker's maximum level in dB.",
                                         style = Type.small, color = p.muted
                                     )
                                 }
@@ -504,7 +696,7 @@ fun EarphonesScreen(openPro: () -> Unit) {
                             }
                         }
                         if (!speaker && !pro) {
-                            Text("Setting how loud a pair runs is part of Kaan Pro.", style = Type.small, color = p.muted)
+                            Text("Calibration is part of Kaan Pro.", style = Type.small, color = p.muted)
                             Spacer(Modifier.height(10.dp))
                             OutlineButton("See Kaan Pro", onClick = openPro)
                         }
@@ -539,6 +731,10 @@ fun SettingsScreen(openPro: () -> Unit) {
     val rest = remember(beat) { store.breakMinutes }
     val auto = remember(beat) { store.autoLower }
     val debugPro = remember(beat) { store.debugPro }
+    val guard = remember(beat) { store.guard }
+    val theme = Live.theme
+    val paid = remember(beat) { store.proCached }
+    val trialLeft = remember(beat) { store.trialLeft() }
     val restSteps = listOf(0, 30, 45, 60, 90)
 
     val precise = remember(beat) { store.precise }
@@ -569,8 +765,7 @@ fun SettingsScreen(openPro: () -> Unit) {
         })
         Spacer(Modifier.height(8.dp))
         Text(
-            if (sensitive) "A week allows 40 hours at 75 dB. Louder sound uses the budget faster."
-            else "A week allows 40 hours at 80 dB. Louder sound uses the budget faster.",
+            if (sensitive) "40 hours a week at 75 dB." else "40 hours a week at 80 dB.",
             style = Type.small, color = p.muted
         )
         Spacer(Modifier.height(14.dp))
@@ -578,7 +773,7 @@ fun SettingsScreen(openPro: () -> Unit) {
 
         SettingRow(
             "Background tracking",
-            if (tracking) "Kaan counts listening all day." else "Off. Nothing is counted.",
+            if (tracking) "Counts listening all day." else "Nothing is counted.",
             onClick = {
                 if (tracking) TrackerService.stop(ctx) else TrackerService.start(ctx)
                 changed()
@@ -588,11 +783,11 @@ fun SettingsScreen(openPro: () -> Unit) {
         SettingRow(
             "Precise mode",
             when {
-                !precise -> "Reads how loud the audio signal is, not just the volume step. Android asks for the record audio permission. Kaan records and stores nothing."
-                !micGranted -> "Android removed the permission. Tap to allow it again."
-                !tracking -> "On. Starts when background tracking is on."
-                measuring -> "On. Kaan is reading the signal."
-                else -> "On, but waiting. Open Kaan once after a restart, or this output cannot be read."
+                !precise -> "Reads the real signal level. Needs the record audio permission. Records nothing."
+                !micGranted -> "Permission removed. Tap to allow it."
+                !tracking -> "Starts with background tracking."
+                measuring -> "Reading the signal."
+                else -> "Waiting. This output may not be readable."
             },
             onClick = {
                 when {
@@ -611,18 +806,33 @@ fun SettingsScreen(openPro: () -> Unit) {
             }
         ) { Toggle(precise && micGranted) }
 
-        SettingRow("Warn at 80 percent", "One notification when the budget runs low.", onClick = {
+        SettingRow("Warn at 80 percent", "Pop-up with sound and vibration.", onClick = {
             store.alertNear = !near
             changed()
         }) { Toggle(near) }
 
-        SettingRow("Warn at 100 percent", "One notification when the budget runs out.", onClick = {
+        SettingRow("Warn at 100 percent", "Pop-up when the budget runs out.", onClick = {
             store.alertFull = !full
             changed()
         }) { Toggle(full) }
 
+        SettingRow(
+            "Sudden volume guard",
+            if (!tracking) "Needs background tracking." else "Pulls a sudden jump to full back to 60 percent.",
+            onClick = {
+                store.guard = !guard
+                changed()
+            }
+        ) { Toggle(guard) }
+
+        SettingRow(
+            "Send a test warning",
+            "See and feel what a warning is like.",
+            onClick = { TrackerService.testAlert(ctx) }
+        ) { Glyph(R.drawable.ic_bell, p.accent) }
+
         if (pro) {
-            SettingRow("Ear rest reminder", "Minutes of unbroken listening before Kaan suggests a break.") {
+            SettingRow("Ear rest reminder", "Minutes of listening before a break.") {
                 val at = restSteps.indexOf(rest).coerceAtLeast(0)
                 Stepper(
                     value = if (rest == 0) "Off" else "$rest",
@@ -636,7 +846,7 @@ fun SettingsScreen(openPro: () -> Unit) {
                     }
                 )
             }
-            SettingRow("Lower volume at 100 percent", "Kaan turns the volume down once when the budget runs out.", onClick = {
+            SettingRow("Lower volume at 100 percent", "Turns it down once, on its own.", onClick = {
                 store.autoLower = !auto
                 changed()
             }) { Toggle(auto) }
@@ -647,22 +857,33 @@ fun SettingsScreen(openPro: () -> Unit) {
 
         SettingRow(
             "Kaan Pro",
-            if (pro) "Active on this phone." else "History, earphone calibration, rest reminders, widget.",
+            when {
+                paid -> "Active."
+                trialLeft > 0L -> "Free trial, ${longDuration(trialLeft)} left."
+                pro -> "Unlocked for testing."
+                else -> "Free trial ended."
+            },
             onClick = openPro
-        ) { Glyph(R.drawable.ic_next, p.accent) }
+        ) { Glyph(R.drawable.ic_crown, p.accent) }
 
-        SettingRow("Notification settings", "Change how Kaan's alerts look and sound.", onClick = {
-            ctx.startActivity(
-                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                    .putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
+        Spacer(Modifier.height(16.dp))
+        Text("Appearance", style = Type.small, color = p.muted)
+        Spacer(Modifier.height(6.dp))
+        Segmented(listOf("System", "Light", "Dark"), theme, onSelect = {
+            store.theme = it
+            Live.theme = it
+        })
+        Spacer(Modifier.height(16.dp))
+        Rule()
+
+        SettingRow("Notification settings", "Sound and look of warnings.", onClick = {
+            openNotificationSettings(ctx)
         }) { Glyph(R.drawable.ic_next, p.accent) }
 
         if (isDebuggable(ctx)) {
             SettingRow(
                 "Unlock Pro for testing",
-                "Debug builds only. Stays on until you switch it off. Never ships in a release build.",
+                "Debug builds only.",
                 onClick = {
                     store.debugPro = !debugPro
                     changed()
@@ -697,13 +918,13 @@ private fun UpdateRow() {
         else -> "Check for update"
     }
     val detail = when (state) {
-        is UpdateState.Idle -> "You have build $mine. Tap to look for a newer one."
-        is UpdateState.Checking -> "Checking GitHub for a newer build."
+        is UpdateState.Idle -> "You have build $mine."
+        is UpdateState.Checking -> "Checking."
         is UpdateState.UpToDate -> "You have the newest build, $mine."
-        is UpdateState.Available -> "A new version is available. Tap to download and install it."
+        is UpdateState.Available -> "A new version is available. Tap to install."
         is UpdateState.Downloading -> "Downloading, ${(state.progress * 100).roundToInt()} percent done."
-        is UpdateState.NeedsPermission -> "Allow Kaan to install apps on the page that opened, then tap here again."
-        is UpdateState.Ready -> "The installer has the new build. Tap to open it again."
+        is UpdateState.NeedsPermission -> "Allow installs for Kaan, then tap again."
+        is UpdateState.Ready -> "Tap to open the installer again."
         is UpdateState.Failed -> "${state.reason} Tap to try again."
     }
     SettingRow(title, detail, onClick = { Updater.act(ctx) }) {
@@ -720,6 +941,11 @@ private fun UpdateRow() {
 
 // ---------------------------------------------------------------- Pro
 
+object ProPrice {
+    /** Shown until Google Play reports the real price for the user's country. Set the same price in Play Console. */
+    const val FALLBACK = "\u20B920"
+}
+
 @Composable
 fun ProScreen(billing: Billing, activity: Activity, onBack: () -> Unit) {
     val ctx = LocalContext.current
@@ -727,20 +953,66 @@ fun ProScreen(billing: Billing, activity: Activity, onBack: () -> Unit) {
     val store = remember { Store(ctx) }
     val beat = Live.beat
     val pro = remember(beat) { store.isPro }
+    val paid = remember(beat) { store.proCached }
+    val trialLeft = remember(beat) { store.trialLeft() }
     val products = remember(beat) { billing.products }
+    val monthly = products.firstOrNull()
+    val price = monthly?.let { billing.price(it) }?.takeIf { it.isNotBlank() } ?: ProPrice.FALLBACK
 
     Column(Modifier.fillMaxSize().padding(horizontal = 22.dp).verticalScroll(rememberScrollState())) {
         ScreenTitle("Kaan Pro", onBack = onBack)
 
+        Card(Modifier.arrive(0)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconBlock(
+                    if (paid) R.drawable.ic_crown else R.drawable.ic_gift,
+                    p.joy, p.accent, size = 56.dp, glyph = 30.dp
+                )
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        when {
+                            paid -> "Pro is active"
+                            trialLeft > 0L -> "Your free trial is running"
+                            pro -> "Pro is unlocked for testing"
+                            else -> "Your free trial has ended"
+                        },
+                        style = Type.heading, color = p.ink
+                    )
+                    Text(
+                        when {
+                            paid -> "Every Pro feature is open."
+                            trialLeft > 0L -> "${longDuration(trialLeft).replaceFirstChar { it.uppercase() }} left. No card needed."
+                            pro -> "The testing switch keeps Pro open."
+                            else -> "Tracking, warnings and rewards stay free."
+                        },
+                        style = Type.small, color = p.muted
+                    )
+                }
+            }
+            if (!paid && trialLeft > 0L) {
+                Spacer(Modifier.height(14.dp))
+                Meter(
+                    fraction = 1f - trialLeft.toFloat() / Store.TRIAL_MS,
+                    color = p.joy,
+                    modifier = Modifier.fillMaxWidth().height(10.dp)
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+
         listOf(
-            Triple(R.drawable.ic_history, "Week and month history", "Every day charted against your budget."),
-            Triple(R.drawable.ic_devices, "Earphone calibration", "Set how loud each pair runs for a closer estimate."),
-            Triple(R.drawable.ic_rest, "Ear rest reminders", "A nudge after long unbroken listening."),
-            Triple(R.drawable.ic_down, "Automatic volume drop", "Kaan lowers the volume when the budget runs out."),
-            Triple(R.drawable.ic_today, "Home screen widget", "Today's budget without opening the app.")
-        ).forEach { (icon, title, detail) ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Glyph(icon, p.accent, size = 28.dp)
+            Triple(R.drawable.ic_history, "Week and month history", "Every day against your budget."),
+            Triple(R.drawable.ic_devices, "Earphone calibration", "A closer estimate for each pair."),
+            Triple(R.drawable.ic_moon, "Ear rest reminders", "A nudge after long listening."),
+            Triple(R.drawable.ic_down, "Automatic volume drop", "Turns it down when the budget runs out."),
+            Triple(R.drawable.ic_today, "Home screen widget", "Today's budget on the home screen.")
+        ).forEachIndexed { i, (icon, title, detail) ->
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 12.dp).arrive(i + 1),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconBlock(icon, p.lift, p.accent, size = 44.dp)
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, style = Type.bodyStrong, color = p.ink)
@@ -751,36 +1023,27 @@ fun ProScreen(billing: Billing, activity: Activity, onBack: () -> Unit) {
         }
         Spacer(Modifier.height(24.dp))
 
-        when {
-            pro -> Text("Pro is active on this phone.", style = Type.bodyStrong, color = p.accent)
-
-            products.isEmpty() -> Text(
-                "Plans load when Kaan is installed from Google Play. In a debug build, use the testing switch in Settings.",
+        if (!paid) {
+            Text("$price a month", style = Type.title, color = p.ink)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                if (trialLeft > 0L) "After the 2 day free trial. Cancel any time." else "Cancel any time.",
                 style = Type.body, color = p.muted
             )
-
-            else -> products.forEachIndexed { i, product ->
-                val period = if (product.productId == Billing.YEARLY) "yearly" else "monthly"
-                val label = "Start $period at ${billing.price(product)}"
-                if (i == 0) {
-                    SolidButton(label, onClick = { billing.buy(activity, product) })
-                } else {
-                    OutlineButton(label, onClick = { billing.buy(activity, product) })
-                }
-                Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(16.dp))
+            if (monthly != null) {
+                SolidButton("Subscribe for $price a month", onClick = { billing.buy(activity, monthly) })
+            } else {
+                Text(
+                    "The plan loads when Kaan comes from Google Play.",
+                    style = Type.small, color = p.muted
+                )
             }
-        }
-
-        if (!pro) {
             Spacer(Modifier.height(8.dp))
             TextLink("Restore purchase", onClick = {
                 billing.refresh()
                 Live.beat++
             })
-            Text(
-                "Google Play handles payment and renewal. Cancel any time in your Play subscriptions.",
-                style = Type.small, color = p.muted
-            )
         }
         Spacer(Modifier.height(28.dp))
     }
