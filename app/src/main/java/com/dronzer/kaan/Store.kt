@@ -67,7 +67,102 @@ class Store(ctx: Context) {
         get() = bool("debugPro", false)
         set(v) = setBool("debugPro", v)
 
-    val isPro: Boolean get() = proCached || debugPro
+    /** Paid, unlocked for testing, or still inside the free trial. */
+    val isPro: Boolean get() = proCached || debugPro || trialActive
+
+    /** Stops a sudden jump to full volume on earphones. On for everyone. */
+    var guard: Boolean
+        get() = bool("guard", true)
+        set(v) = setBool("guard", v)
+
+    /** Appearance. 0 follows the phone, 1 is light, 2 is dark. */
+    var theme: Int
+        get() = p.getInt("theme", 0)
+        set(v) = p.edit().putInt("theme", v.coerceIn(0, 2)).apply()
+
+    // ------------------------------------------------------------ trial
+
+    /** When Kaan first ran on this phone, in milliseconds. 0 until the app has been opened. */
+    val firstRun: Long get() = p.getLong("firstRun", 0L)
+
+    /** Starts the trial clock the first time the app opens. Later calls change nothing. */
+    fun startClock() {
+        if (firstRun == 0L) p.edit().putLong("firstRun", System.currentTimeMillis()).apply()
+    }
+
+    /** Milliseconds of free trial left. Every Pro feature is open for the first two days. */
+    fun trialLeft(): Long {
+        val start = firstRun
+        if (start == 0L) return TRIAL_MS
+        return (start + TRIAL_MS - System.currentTimeMillis()).coerceIn(0L, TRIAL_MS)
+    }
+
+    val trialActive: Boolean get() = trialLeft() > 0L
+
+    /** True once Kaan has told the user that the trial ended. */
+    var trialEndSeen: Boolean
+        get() = bool("trialEndSeen", false)
+        set(v) = setBool("trialEndSeen", v)
+
+    // ------------------------------------------------------------ rewards
+
+    private fun int(key: String) = p.getInt(key, 0)
+    private fun setInt(key: String, v: Int) = p.edit().putInt(key, v).apply()
+
+    /** Finished days in a row inside the budget. Today is not part of it yet. */
+    var streakDone: Int
+        get() = int("streakDone")
+        set(v) = setInt("streakDone", v)
+
+    var bestStreak: Int
+        get() = int("bestStreak")
+        set(v) = setInt("bestStreak", v)
+
+    /** Finished days inside the budget since Kaan was installed. */
+    var goodDays: Int
+        get() = int("goodDays")
+        set(v) = setInt("goodDays", v)
+
+    var points: Int
+        get() = int("points")
+        set(v) = setInt("points", v)
+
+    /** Times the user lowered the volume with Kaan's button. */
+    var lowers: Int
+        get() = int("lowers")
+        set(v) = setInt("lowers", v)
+
+    /** Times the volume guard caught a jump to full volume. */
+    var saves: Int
+        get() = int("saves")
+        set(v) = setInt("saves", v)
+
+    /** The last day Kaan closed and scored, as a date string. Null before the first run. */
+    var settled: String?
+        get() = p.getString("settled", null)
+        set(v) = p.edit().putString("settled", v).apply()
+
+    fun earned(): Set<String> = p.getStringSet("badges", emptySet()) ?: emptySet()
+
+    /** Badges earned while nobody was looking. Kaan celebrates them when the app is next on screen. */
+    fun unseen(): Set<String> = p.getStringSet("unseenBadges", emptySet()) ?: emptySet()
+
+    fun earn(id: String) {
+        p.edit()
+            .putStringSet("badges", earned() + id)
+            .putStringSet("unseenBadges", unseen() + id)
+            .apply()
+    }
+
+    fun clearUnseen() = p.edit().remove("unseenBadges").apply()
+
+    /** Points from finished days that the user has not been shown yet. */
+    var cheer: Int
+        get() = int("cheer")
+        set(v) = setInt("cheer", v)
+
+    /** Bluetooth devices the user has confirmed as earphones or a speaker. */
+    fun answered(): Int = devices().count { it.startsWith("bt:") && bool("dev:$it:answered", false) }
 
     // ------------------------------------------------------------ days
 
@@ -199,5 +294,6 @@ class Store(ctx: Context) {
 
     companion object {
         private const val NANO = 1_000_000_000.0
+        const val TRIAL_MS = 2L * 24L * 60L * 60L * 1000L
     }
 }

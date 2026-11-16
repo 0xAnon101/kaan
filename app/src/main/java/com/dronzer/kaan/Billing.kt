@@ -20,7 +20,8 @@ import com.android.billingclient.api.QueryPurchasesParams
  * Google Play Billing with no backend. Play is the source of truth for the subscription.
  * The app caches the last answer in Store.proCached so Pro keeps working offline.
  *
- * Create these two subscription product IDs in Play Console before you publish.
+ * Create the subscription product ID below in Play Console before you publish, priced at
+ * 20 rupees a month. The two day free trial runs inside the app, so add no trial offer in Play.
  */
 class Billing(ctx: Context, private val onChange: () -> Unit) : PurchasesUpdatedListener {
 
@@ -60,7 +61,7 @@ class Billing(ctx: Context, private val onChange: () -> Unit) : PurchasesUpdated
     }
 
     private fun loadProducts() {
-        val wanted = listOf(MONTHLY, YEARLY).map {
+        val wanted = listOf(MONTHLY).map {
             QueryProductDetailsParams.Product.newBuilder()
                 .setProductId(it)
                 .setProductType(BillingClient.ProductType.SUBS)
@@ -70,7 +71,7 @@ class Billing(ctx: Context, private val onChange: () -> Unit) : PurchasesUpdated
         // Billing Library 8 returns a QueryProductDetailsResult instead of a plain list.
         client.queryProductDetailsAsync(params) { result, response ->
             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
-                products = response.productDetailsList.sortedBy { if (it.productId == MONTHLY) 0 else 1 }
+                products = response.productDetailsList
                 notifyChange()
             }
         }
@@ -134,6 +135,5 @@ class Billing(ctx: Context, private val onChange: () -> Unit) : PurchasesUpdated
 
     companion object {
         const val MONTHLY = "kaan_pro_monthly"
-        const val YEARLY = "kaan_pro_yearly"
     }
 }
