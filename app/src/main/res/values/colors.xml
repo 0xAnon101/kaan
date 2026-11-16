@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="brand">#0B6E8A</color>
-    <color name="mist">#EEF3F5</color>
-    <color name="window_bg">#EEF3F5</color>
-    <color name="widget_bg">#DFE8EC</color>
-    <color name="widget_ink">#0E2230</color>
-    <color name="widget_muted">#536976</color>
+    <color name="brand">#E2531B</color>
+    <color name="mist">#FFFFFF</color>
+    <color name="window_bg">#F4F5F8</color>
+    <color name="widget_bg">#FFFFFF</color>
+    <color name="widget_ink">#12162B</color>
+    <color name="widget_muted">#6A6F85</color>
 </resources>

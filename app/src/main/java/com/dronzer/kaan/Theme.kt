@@ -35,41 +35,66 @@ data class Palette(
     val ink: Color,
     val muted: Color,
     val line: Color,
+    /** The one warm brand colour: buttons, links, the active tab. */
     val accent: Color,
     val onAccent: Color,
+    /** The budget while all is well. */
+    val calm: Color,
     val caution: Color,
-    val over: Color
+    val over: Color,
+    /** Sunny yellow for streaks, badges and other good news. */
+    val joy: Color,
+    val onJoy: Color,
+    /** A soft tint of the accent, for blocks that carry good news. */
+    val lift: Color,
+    /** A soft tint of the over colour, for blocks that carry a warning. */
+    val blush: Color,
+    val dark: Boolean
 ) {
-    /** Calm below 80 percent of the budget, amber near the limit, red past it. */
+    /** Blue below 80 percent of the budget, amber near the limit, red past it. */
     fun state(fraction: Float): Color = when {
         fraction >= 1f -> over
         fraction >= 0.8f -> caution
-        else -> accent
+        else -> calm
     }
 }
 
+/** Clean and bright: white blocks on a soft grey page, near-black ink, one orange accent. */
 val LightPalette = Palette(
-    bg = Color(0xFFEEF3F5),
-    surface = Color(0xFFDFE8EC),
-    ink = Color(0xFF0E2230),
-    muted = Color(0xFF536976),
-    line = Color(0xFFC6D3D9),
-    accent = Color(0xFF0B6E8A),
-    onAccent = Color(0xFFF2F8FA),
-    caution = Color(0xFFB87A06),
-    over = Color(0xFFC2412D)
+    bg = Color(0xFFF4F5F8),
+    surface = Color(0xFFFFFFFF),
+    ink = Color(0xFF12162B),
+    muted = Color(0xFF6A6F85),
+    line = Color(0xFFE3E5EC),
+    accent = Color(0xFFE2531B),
+    onAccent = Color(0xFFFFFFFF),
+    calm = Color(0xFF2F6FED),
+    caution = Color(0xFFB26A00),
+    over = Color(0xFFD7263D),
+    joy = Color(0xFFFFC533),
+    onJoy = Color(0xFF2E2200),
+    lift = Color(0xFFFFE9DE),
+    blush = Color(0xFFFCE1E4),
+    dark = false
 )
 
+/** Night blue, soft white ink, the same orange accent turned up a little. */
 val DarkPalette = Palette(
-    bg = Color(0xFF0B161C),
-    surface = Color(0xFF13242D),
-    ink = Color(0xFFE4EDF1),
-    muted = Color(0xFF8BA1AD),
-    line = Color(0xFF233843),
-    accent = Color(0xFF5CC4DE),
-    onAccent = Color(0xFF06222B),
-    caution = Color(0xFFE3AE45),
-    over = Color(0xFFF0745E)
+    bg = Color(0xFF0B1020),
+    surface = Color(0xFF151B30),
+    ink = Color(0xFFF2F4FA),
+    muted = Color(0xFF969DB5),
+    line = Color(0xFF232A44),
+    accent = Color(0xFFFF8A4C),
+    onAccent = Color(0xFF2A0F00),
+    calm = Color(0xFF6AA8FF),
+    caution = Color(0xFFFFC24D),
+    over = Color(0xFFFF6B78),
+    joy = Color(0xFFFFD45C),
+    onJoy = Color(0xFF2E2200),
+    lift = Color(0xFF3A2418),
+    blush = Color(0xFF47202A),
+    dark = true
 )
 
 val LocalPalette = staticCompositionLocalOf { LightPalette }
@@ -78,6 +103,10 @@ object Type {
     val hero = TextStyle(
         fontFamily = Display, fontWeight = FontWeight.ExtraBold,
         fontSize = 104.sp, lineHeight = 104.sp, letterSpacing = (-3).sp
+    )
+    val big = TextStyle(
+        fontFamily = Display, fontWeight = FontWeight.ExtraBold,
+        fontSize = 56.sp, lineHeight = 58.sp, letterSpacing = (-1.5).sp
     )
     val title = TextStyle(
         fontFamily = Display, fontWeight = FontWeight.Bold,
@@ -115,7 +144,12 @@ fun <T> spatial(): FiniteAnimationSpec<T> = spring(dampingRatio = 0.82f, stiffne
 
 @Composable
 fun KaanTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+    // 0 follows the phone, 1 is light, 2 is dark. Set under Appearance in Settings.
+    val dark = when (Live.theme) {
+        1 -> false
+        2 -> true
+        else -> isSystemInDarkTheme()
+    }
     val p = if (dark) DarkPalette else LightPalette
     val scheme = if (dark) {
         darkColorScheme(primary = p.accent, onPrimary = p.onAccent, background = p.bg, onBackground = p.ink, surface = p.bg, onSurface = p.ink)
